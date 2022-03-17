@@ -29,4 +29,4 @@ def extract_entities():
 	
 	return "NER"
 
-app.run()
+app.run(host="0.0.0.0")
