@@ -3,12 +3,14 @@ import numpy as np
 from vncorenlp import VnCoreNLP
 from transformers import AutoTokenizer
 
+PADDING_TAG = "PAD"
+
 class PhoBERT(object):
 	def __init__(self, label_path='resources/tags.txt', model_path='resources/phobert') -> None:
 		with open(label_path, 'r') as f:
 			self.__tags = [line.rstrip('\n') for line in f]
 
-		self.__model = torch.load(model_path)
+		self.__model = torch.load(model_path, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 		self.__model.eval()
 
 		self.__annotator = VnCoreNLP(address="http://127.0.0.1", port=8000)
@@ -20,7 +22,6 @@ class PhoBERT(object):
 		segmented_text = ' '.join(segmented_text)
 
 		input_ids = torch.tensor([self.__tokenizer.encode(segmented_text)])
-
 		with torch.no_grad():
 			output = self.__model(input_ids)
 		label_indices = np.argmax(output[0].to('cpu').numpy(), axis=2)
@@ -44,6 +45,9 @@ class PhoBERT(object):
 		tks, ts = [], []
 		while idx < len(tags):
 			current_tag = tags[idx]
+			if current_tag == PADDING_TAG:
+				current_tag = "O"
+
 			current_token = tokens[idx]
 			updated = True
 			while current_token.endswith("@@"):
