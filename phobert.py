@@ -1,16 +1,12 @@
-import pickle
 import torch
 import numpy as np
 from vncorenlp import VnCoreNLP
 from transformers import AutoTokenizer
 
 class PhoBERT(object):
-	def __init__(self, label_path='resources/tags.pkl', model_path='resources/phobert') -> None:
-		with open(label_path, 'rb') as f:
-			self.__tags = pickle.load(f)
-
-		self.__tag2idx = {t: i for i, t in enumerate(self.__tags)}
-		self.__idx2tag = {i: t for i, t in enumerate(self.__tags)}
+	def __init__(self, label_path='resources/tags.txt', model_path='resources/phobert') -> None:
+		with open(label_path, 'r') as f:
+			self.__tags = [line.rstrip('\n') for line in f]
 
 		self.__model = torch.load(model_path)
 		self.__model.eval()
