@@ -1,34 +1,53 @@
+from unittest.util import _MAX_LENGTH
 import torch
 import numpy as np
 from vncorenlp import VnCoreNLP
 from transformers import AutoTokenizer
+from tensorflow import keras
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 PADDING_TAG = "PAD"
+SENTENCE_LENGTH = 200
 
-class PhoBERT(object):
-	def __init__(self, label_path='resources/tags.txt', model_path='resources/phobert') -> None:
-		with open(label_path, 'r') as f:
+class NERModel(object):
+	def __init__(self) -> None:
+		with open('resources/tags.txt', 'r') as f:
 			self.__tags = [line.rstrip('\n') for line in f]
-
-		self.__model = torch.load(model_path, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-		self.__model.eval()
 
 		self.__annotator = VnCoreNLP(address="http://127.0.0.1", port=8000)
 		self.__tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base", use_fast=False)
 
-	def predict_sentence(self, sentence):
+		self.__bert_model = torch.load('resources/phobert', map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+		self.__bert_model.eval()
+
+		self.__bilstm_model = keras.models.load_model('resources/bilstm.h5')
+
+	def predict_sentence(self, sentence, model_name):
 		segmented_words = self.__annotator.tokenize(sentence)
 		segmented_text = [' '.join(word) for word in segmented_words]
 		segmented_text = ' '.join(segmented_text)
 
-		input_ids = torch.tensor([self.__tokenizer.encode(segmented_text)])
-		with torch.no_grad():
-			output = self.__model(input_ids)
-		label_indices = np.argmax(output[0].to('cpu').numpy(), axis=2)
+		x = self.__tokenizer.encode(segmented_text, add_special_tokens=False)
+		if model_name == "BERT":
+			input_ids = torch.tensor([x])
+			with torch.no_grad():
+				y = self.__bert_model(input_ids)
+			label_indices = np.argmax(y[0].to('cpu').numpy(), axis=2)
+			label_indices = label_indices[0]
+			tokens = self.__tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
+		elif model_name == "BiLSTM":
+			length = len(x)
+			if length > SENTENCE_LENGTH:
+				length = SENTENCE_LENGTH
+			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
+			y = self.__bilstm_model.predict(x)
+			label_indices = np.argmax(y[0], axis=-1)
+			label_indices = label_indices[:length]
+			input_ids = x[0][:length]
+			tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)
 
-		tokens = self.__tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
 		new_tokens, new_tags = [], []
-		for token, label_idx in zip(tokens, label_indices[0]):
+		for token, label_idx in zip(tokens, label_indices):
 			if token == "<s>" or token == "</s>":
 				continue
 			if token.startswith("##"):

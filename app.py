@@ -1,13 +1,13 @@
 import json
 from flask import Flask, request, jsonify
-from phobert import PhoBERT
+from model import NERModel
 
 MAX_SENTENCE_LENGTH = 150
 
 app = Flask(__name__)
 app.config["DEBUG"] = False
 
-bert = PhoBERT()
+ner_model = NERModel()
 
 @app.route('/', methods=['GET'])
 def home():
@@ -20,25 +20,25 @@ def extract_entities():
 	text = record.get('text')
 	if model is None or text is None:
 		return jsonify({'error': 'wrong request body format'})
+	if model != "BERT" and model != "BiLSTM":
+		return jsonify({'error': 'only accept BERT or BiLSTM model'})
 	
-	if model == "BERT":
-		ss = text.split()
-		texts = []
-		if len(ss) > MAX_SENTENCE_LENGTH:
-			split_text(texts, text)
-		else:
-			texts = [text]
-		
-		response = []
-		for txt in texts:
-			contents, labels = bert.predict_sentence(txt)
-			for content, label in zip(contents, labels):
-				# print("{}\t{}".format(content, label))
-				response.append({"content": content, "label": label})
+	ss = text.split()
+	texts = []
+	if len(ss) > MAX_SENTENCE_LENGTH:
+		split_text(texts, text)
+	else:
+		texts = [text]
 
-		return jsonify(response)
+	response = []
+	for txt in texts:
+		contents, labels = ner_model.predict_sentence(txt, model)
+		for content, label in zip(contents, labels):
+			# print("{}\t{}".format(content, label))
+			response.append({"content": content, "label": label})
+
 	
-	return "NER"
+	return jsonify(response)
 
 def split_text(texts, text):
 	if len(text) <= MAX_SENTENCE_LENGTH:
@@ -57,4 +57,4 @@ def split_text(texts, text):
 	split_text(texts, txt2)
 
 if __name__ == '__main__':
-  app.run(host='0.0.0.0')
+  	app.run(host='0.0.0.0')
