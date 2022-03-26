@@ -5,9 +5,23 @@ from vncorenlp import VnCoreNLP
 from transformers import AutoTokenizer
 from tensorflow import keras
 from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras import Model, Input
+from tensorflow.keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
+from keras_crf import CRFModel
 
 PADDING_TAG = "PAD"
 SENTENCE_LENGTH = 200
+
+def build_bilstm_crf_model(n_labels, n_vocab, input_length, embdding_dim, lstm_units, dropout):
+	input = Input(shape=(input_length,))
+	word_emb = Embedding(input_dim=n_vocab, output_dim=embdding_dim, input_length=input_length)(input)
+	bilstm = Bidirectional(LSTM(units=lstm_units, return_sequences=True,
+							recurrent_dropout=dropout))(word_emb)
+	dense = Dense(n_labels, activation="relu")(bilstm)
+	base = Model(inputs=input, outputs=dense)
+	model = CRFModel(base, n_labels)
+
+	return model
 
 class NERModel(object):
 	def __init__(self) -> None:
@@ -21,6 +35,10 @@ class NERModel(object):
 		self.__bert_model.eval()
 
 		self.__bilstm_model = keras.models.load_model('resources/bilstm.h5')
+
+		self.__bilstm_crf_model = build_bilstm_crf_model(len(self.__tags), 64000, 200, 1024, 128, 0.1)
+		self.__bilstm_crf_model.load_weights('resources/bilstm_crf/bilstm_crf')
+		self.__bilstm_crf_model.compile(optimizer="adam", metrics=['acc'])
 
 	def predict_sentence(self, sentence, model_name):
 		segmented_words = self.__annotator.tokenize(sentence)
@@ -42,6 +60,16 @@ class NERModel(object):
 			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
 			y = self.__bilstm_model.predict(x)
 			label_indices = np.argmax(y[0], axis=-1)
+			label_indices = label_indices[:length]
+			input_ids = x[0][:length]
+			tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)
+		elif model_name == "BiLSTM+CRF":
+			length = len(x)
+			if length > SENTENCE_LENGTH:
+				length = SENTENCE_LENGTH
+			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
+			y = self.__bilstm_crf_model.predict(x)
+			label_indices = y[0][0]
 			label_indices = label_indices[:length]
 			input_ids = x[0][:length]
 			tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)

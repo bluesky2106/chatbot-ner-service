@@ -4,3 +4,4 @@ transformers
 vncorenlp
 numpy
 tensorflow
+keras_crf
