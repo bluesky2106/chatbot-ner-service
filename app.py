@@ -25,9 +25,8 @@ def extract_entities():
 		return jsonify({'error': 'only accept BERT or BiLSTM or BiLSTM+CRF models'})
 	
 	ss = text.split()
-	texts = []
 	if len(ss) > MAX_SENTENCE_LENGTH:
-		split_text(texts, text)
+		texts = split_text(text)
 	else:
 		texts = [text]
 
@@ -40,10 +39,11 @@ def extract_entities():
 
 	return jsonify(response)
 
-def split_text(texts, text):
+def split_text(text):
+	texts = []
 	if len(text) <= MAX_SENTENCE_LENGTH:
 		texts.append(text)
-		return
+		return texts
 
 	idx = MAX_SENTENCE_LENGTH-1
 	while text[idx] != "." and idx > 0:
@@ -51,10 +51,11 @@ def split_text(texts, text):
 	if idx == 0:
 		idx = MAX_SENTENCE_LENGTH-1
 
-	txt1 = text[:idx+1].copy()
-	txt2 = text[idx+1].copy()
+	txt1 = text[:idx+1]
+	txt2 = text[idx+1:]
 	texts.append(txt1)
-	split_text(texts, txt2)
+	texts.extend(split_text(txt2))
+	return texts
 
 if __name__ == '__main__':
   	app.run(host='0.0.0.0')
