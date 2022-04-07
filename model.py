@@ -141,7 +141,9 @@ class NERModel(object):
 					idx += 1
 				
 				content = ' '.join(ts)
-				contents.append(content.replace("_", " "))
+				content = content.replace(" _ ", " ")
+				content = content.replace("_", " ")
+				contents.append(content)
 				continue
 
 			if current_tag.startswith('B-') or current_tag.startswith('I-'):
@@ -160,7 +162,9 @@ class NERModel(object):
 					idx += 1
 				
 				content = ' '.join(ts)
-				contents.append(content.replace("_", " "))
+				content = content.replace(" _ ", " ")
+				content = content.replace("_", " ")
+				contents.append(content)
 				continue
 
 		return contents, labels

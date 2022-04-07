@@ -2,7 +2,7 @@ import json
 from flask import Flask, request, jsonify
 from model import NERModel
 
-MAX_SENTENCE_LENGTH = 200
+MAX_SENTENCE_LENGTH = 230
 
 app = Flask(__name__)
 app.config["DEBUG"] = False
@@ -46,7 +46,7 @@ def split_text(text):
 		return texts
 
 	idx = MAX_SENTENCE_LENGTH-1
-	while text[idx] != "." and idx > 0:
+	while text[idx] != "." and text[idx] != "," and idx > 0:
 		idx -= 1
 	if idx == 0:
 		idx = MAX_SENTENCE_LENGTH-1
