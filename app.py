@@ -2,7 +2,7 @@ import json
 from flask import Flask, request, jsonify
 from model import NERModel
 
-MAX_SENTENCE_LENGTH = 150
+MAX_SENTENCE_LENGTH = 200
 
 app = Flask(__name__)
 app.config["DEBUG"] = False

@@ -8,6 +8,7 @@ B-district
 B-email
 B-floor
 B-front_length
+B-house_number
 B-legal
 B-living_room
 B-phone
@@ -32,6 +33,7 @@ I-district
 I-email
 I-floor
 I-front_length
+I-house_number
 I-legal
 I-living_room
 I-phone

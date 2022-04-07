@@ -10,7 +10,7 @@ from tensorflow.keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dro
 from keras_crf import CRFModel
 
 PADDING_TAG = "PAD"
-SENTENCE_LENGTH = 200
+SENTENCE_LENGTH = 250
 
 def build_bilstm_crf_model(n_labels, n_vocab, input_length, embdding_dim, lstm_units, dropout):
 	input = Input(shape=(input_length,))
@@ -36,7 +36,7 @@ class NERModel(object):
 
 		self.__bilstm_model = keras.models.load_model('resources/bilstm.h5')
 
-		self.__bilstm_crf_model = build_bilstm_crf_model(len(self.__tags), 64000, 200, 1024, 128, 0.1)
+		self.__bilstm_crf_model = build_bilstm_crf_model(len(self.__tags), 64000, SENTENCE_LENGTH, 1024, 128, 0.1)
 		self.__bilstm_crf_model.load_weights('resources/bilstm_crf/bilstm_crf')
 		self.__bilstm_crf_model.compile(optimizer="adam", metrics=['acc'])
 
