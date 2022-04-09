@@ -10,7 +10,7 @@ from tensorflow.keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dro
 from keras_crf import CRFModel
 
 PADDING_TAG = "PAD"
-SENTENCE_LENGTH = 250
+SENTENCE_LENGTH = 200
 
 def build_bilstm_crf_model(n_labels, n_vocab, input_length, embdding_dim, lstm_units, dropout):
 	input = Input(shape=(input_length,))
@@ -40,47 +40,74 @@ class NERModel(object):
 		self.__bilstm_crf_model.load_weights('resources/bilstm_crf/bilstm_crf')
 		self.__bilstm_crf_model.compile(optimizer="adam", metrics=['acc'])
 
+	def __split_text(self, words, max_len):
+		"""
+		Input:
+			- words : list of word which forms a comprehensive segmented sentence
+			- max_len : maximum length of the sentence. If longer, split the sentence.
+		"""
+
+		texts = []
+		if len(words) <= max_len:
+			texts.append(" ".join(words))
+			return texts
+
+		idx = max_len-1
+		while words[idx] != "." and words[idx] != "," and idx > 0:
+			idx -= 1
+		if idx == 0:
+			idx = max_len-1
+
+		txt1 = words[:idx+1]
+		txt2 = words[idx+1:]
+		texts.append(" ".join(txt1))
+		texts.extend(self.__split_text(txt2, max_len))
+		return texts
+
 	def predict_sentence(self, sentence, model_name):
 		segmented_words = self.__annotator.tokenize(sentence)
-		segmented_text = [' '.join(word) for word in segmented_words]
-		segmented_text = ' '.join(segmented_text)
-
-		x = self.__tokenizer.encode(segmented_text, add_special_tokens=False)
-		if model_name == "BERT":
-			input_ids = torch.tensor([x])
-			with torch.no_grad():
-				y = self.__bert_model(input_ids)
-			label_indices = np.argmax(y[0].to('cpu').numpy(), axis=2)
-			label_indices = label_indices[0]
-			tokens = self.__tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
-		elif model_name == "BiLSTM":
-			length = len(x)
-			if length > SENTENCE_LENGTH:
-				length = SENTENCE_LENGTH
-			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
-			y = self.__bilstm_model.predict(x)
-			label_indices = np.argmax(y[0], axis=-1)
-			label_indices = label_indices[:length]
-			input_ids = x[0][:length]
-			tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)
-		elif model_name == "BiLSTM+CRF":
-			length = len(x)
-			if length > SENTENCE_LENGTH:
-				length = SENTENCE_LENGTH
-			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
-			y = self.__bilstm_crf_model.predict(x)
-			label_indices = y[0][0]
-			label_indices = label_indices[:length]
-			input_ids = x[0][:length]
-			tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)
+		segmented_words = [word for sublist in segmented_words for word in sublist]
+		segmented_sentences = self.__split_text(segmented_words, SENTENCE_LENGTH)
 
 		new_tokens, new_tags = [], []
-		for token, label_idx in zip(tokens, label_indices):
-			if token == "<s>" or token == "</s>":
-				continue
-			if token.startswith("##"):
-				new_tokens[-1] = new_tokens[-1] + token[2:]
-			else:
+		for segmented_sentence in segmented_sentences:
+			x = self.__tokenizer.encode(segmented_sentence, add_special_tokens=False)
+			if model_name == "BERT":
+				input_ids = torch.tensor([x])
+				with torch.no_grad():
+					y = self.__bert_model(input_ids)
+				label_indices = np.argmax(y[0].to('cpu').numpy(), axis=2)
+				label_indices = label_indices[0]
+				tokens = self.__tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
+			elif model_name == "BiLSTM":
+				length = len(x)
+				if length > SENTENCE_LENGTH:
+					length = SENTENCE_LENGTH
+				x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
+				y = self.__bilstm_model.predict(x)
+				label_indices = np.argmax(y[0], axis=-1)
+				label_indices = label_indices[:length]
+				input_ids = x[0][:length]
+				tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)
+			elif model_name == "BiLSTM+CRF":
+				length = len(x)
+				if length > SENTENCE_LENGTH:
+					length = SENTENCE_LENGTH
+				x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
+				y = self.__bilstm_crf_model.predict(x)
+				label_indices = y[0][0]
+				label_indices = label_indices[:length]
+				input_ids = x[0][:length]
+				tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)
+
+			for token, label_idx in zip(tokens, label_indices):
+				if token == "<s>" or token == "</s>":
+					continue
+				# if token.startswith("##"):
+				# 	new_tokens[-1] = new_tokens[-1] + token[2:]
+				# else:
+				# 	new_tags.append(self.__tags[label_idx])
+				# 	new_tokens.append(token)
 				new_tags.append(self.__tags[label_idx])
 				new_tokens.append(token)
 
