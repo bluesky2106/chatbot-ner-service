@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 import pandas as pd
@@ -29,7 +30,7 @@ class NERModel(object):
 		with open('resources/tags.txt', 'r') as f:
 			self.__tags = [line.rstrip('\n') for line in f]
 
-		self.__annotator = VnCoreNLP(address="http://127.0.0.1", port=8000)
+		self.__annotator = VnCoreNLP(address=os.getenv('vncorenlp_svc_host'), port=int(os.getenv('vncorenlp_svc_port')))
 		self.__tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base", use_fast=False)
 
 		self.__bert_model = torch.load('resources/phobert', map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
@@ -228,5 +229,5 @@ class QuestionAnsweringModel(object):
 			answer = "Unable to find the answer to your question."
 		
 		# print("\nPredicted answer:\n{}".format(answer.capitalize()))
-		
+
 		return answer
