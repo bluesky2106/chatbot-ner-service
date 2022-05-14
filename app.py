@@ -1,6 +1,7 @@
 import json
 from flask import Flask, request, jsonify
 from model import NERModel, QuestionAnsweringModel
+from constants import *
 
 app = Flask(__name__)
 app.config["DEBUG"] = False
@@ -20,8 +21,9 @@ def extract_entities():
 
 	if model is None or text is None:
 		return jsonify({'error': 'wrong request body format'})
-	if model != "BERT" and model != "BiLSTM" and model != "BiLSTM+CRF":
-		return jsonify({'error': 'only accept BERT or BiLSTM or BiLSTM+CRF models'})
+	if model != MODEL_PHOBERT_BASE and model != MODEL_PHOBERT_LARGE and \
+		model != MODEL_BILSTM and model != MODEL_BILSTM_CRF:
+		return jsonify({'error': 'only accept {} / {} / {} / {} models'.format(MODEL_PHOBERT_BASE, MODEL_PHOBERT_LARGE, MODEL_BILSTM, MODEL_BILSTM_CRF)})
 	
 	response = []
 	contents, labels = ner_model.predict_sentence(text, model)

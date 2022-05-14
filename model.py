@@ -1,7 +1,6 @@
 import os
 import torch
 import numpy as np
-import pandas as pd
 
 from vncorenlp import VnCoreNLP
 from transformers import AutoTokenizer, BertForQuestionAnswering, BertTokenizer
@@ -10,6 +9,8 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras import Model, Input
 from tensorflow.keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
 from keras_crf import CRFModel
+
+from constants import *
 
 PADDING_TAG = "PAD"
 SENTENCE_LENGTH = 250
@@ -30,16 +31,28 @@ class NERModel(object):
 		with open('resources/tags.txt', 'r') as f:
 			self.__tags = [line.rstrip('\n') for line in f]
 
-		self.__annotator = VnCoreNLP(address=os.getenv('vncorenlp_svc_host'), port=int(os.getenv('vncorenlp_svc_port')))
-		self.__tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base", use_fast=False)
+		vncorenlp_svc_host = os.getenv('vncorenlp_svc_host')
+		if not vncorenlp_svc_host:
+			vncorenlp_svc_host = "http://127.0.0.1"
 
-		self.__bert_model = torch.load('resources/phobert', map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-		self.__bert_model.eval()
+		vncorenlp_svc_port = os.getenv('vncorenlp_svc_port')
+		if not vncorenlp_svc_port:
+			vncorenlp_svc_port = "8000"
 
-		self.__bilstm_model = keras.models.load_model('resources/bilstm.h5')
+		self.__annotator = VnCoreNLP(address=vncorenlp_svc_host, port=int(vncorenlp_svc_port))
+		self.__base_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base", use_fast=False)
+		self.__large_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-large", use_fast=False)
+
+		self.__phobert_base_model = torch.load(RESOURCE_PHOBERT_BASE, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+		self.__phobert_base_model.eval()
+
+		# self.__phobert_large_model = torch.load(RESOURCE_PHOBERT_LARGE, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+		# self.__phobert_large_model.eval()
+
+		self.__bilstm_model = keras.models.load_model(RESOURCE_PHOBERT_BILSTM)
 
 		self.__bilstm_crf_model = build_bilstm_crf_model(len(self.__tags), 64000, SENTENCE_LENGTH, 1024, 128, 0.1)
-		self.__bilstm_crf_model.load_weights('resources/bilstm_crf/bilstm_crf')
+		self.__bilstm_crf_model.load_weights(RESOURCE_PHOBERT_BILSTM_CRF)
 		self.__bilstm_crf_model.compile(optimizer="adam", metrics=['acc'])
 
 	def __split_array(self, arr, max_len):
@@ -59,19 +72,30 @@ class NERModel(object):
 		segmented_words = self.__annotator.tokenize(sentence)
 		segmented_words = [word for sublist in segmented_words for word in sublist]
 		segmented_text = " ".join(segmented_words)
-		x = self.__tokenizer.encode(segmented_text, add_special_tokens=False)
+
+		if model_name == MODEL_PHOBERT_LARGE:
+			x = self.__large_tokenizer.encode(segmented_text, add_special_tokens=True)
+		else:
+			x = self.__base_tokenizer.encode(segmented_text, add_special_tokens=True)
 		xs = self.__split_array(x, SENTENCE_LENGTH)
 
 		new_tokens, new_tags = [], []
 		for x in xs:
-			if model_name == "BERT":
+			if model_name == MODEL_PHOBERT_BASE:
 				input_ids = torch.tensor([x])
 				with torch.no_grad():
-					y = self.__bert_model(input_ids)
+					y = self.__phobert_base_model(input_ids)
 				label_indices = np.argmax(y[0].to('cpu').numpy(), axis=2)
 				label_indices = label_indices[0]
-				tokens = self.__tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
-			elif model_name == "BiLSTM":
+				tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
+			elif model_name == MODEL_PHOBERT_LARGE:
+				input_ids = torch.tensor([x])
+				with torch.no_grad():
+					y = self.__phobert_large_model(input_ids)
+				label_indices = np.argmax(y[0].to('cpu').numpy(), axis=2)
+				label_indices = label_indices[0]
+				tokens = self.__large_tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
+			elif model_name == MODEL_BILSTM:
 				length = len(x)
 				if length > SENTENCE_LENGTH:
 					length = SENTENCE_LENGTH
@@ -80,8 +104,8 @@ class NERModel(object):
 				label_indices = np.argmax(y[0], axis=-1)
 				label_indices = label_indices[:length]
 				input_ids = x[0][:length]
-				tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)
-			elif model_name == "BiLSTM+CRF":
+				tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
+			elif model_name == MODEL_BILSTM_CRF:
 				length = len(x)
 				if length > SENTENCE_LENGTH:
 					length = SENTENCE_LENGTH
@@ -90,7 +114,7 @@ class NERModel(object):
 				label_indices = y[0][0]
 				label_indices = label_indices[:length]
 				input_ids = x[0][:length]
-				tokens = self.__tokenizer.convert_ids_to_tokens(input_ids)
+				tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
 
 			for token, label_idx in zip(tokens, label_indices):
 				if token == "<s>" or token == "</s>":
