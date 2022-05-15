@@ -123,8 +123,9 @@ class NERModel(object):
 				new_tokens.append(token)
 
 		new_tokens, new_tags = self.__convert_subwords_to_text(new_tokens, new_tags)
+		new_tokens = self.__fix_unknown_tokens(new_tokens, segmented_text)
 		return self.__generate_content_label(new_tokens, new_tags)
-
+		
 	def __convert_subwords_to_text(self, tokens, tags):
 		idx = 0
 		tks, ts = [], []
@@ -206,6 +207,17 @@ class NERModel(object):
 				continue
 
 		return contents, labels
+
+	def __fix_unknown_tokens(self, tokens, segmented_text):
+		current_pos = 0
+		for idx, token in enumerate(tokens):
+			if token == "<unk>" and idx < len(tokens)-1:
+				next_token = tokens[idx+1]
+				pos = segmented_text.find(next_token, current_pos)
+				if pos >= 0:
+					tokens[idx] = segmented_text[current_pos:pos-1]
+			current_pos += len(tokens[idx]) + 1
+		return tokens
 
 class QuestionAnsweringModel(object):
 	def __init__(self) -> None:
