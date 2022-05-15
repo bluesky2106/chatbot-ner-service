@@ -46,8 +46,8 @@ class NERModel(object):
 		self.__phobert_base_model = torch.load(RESOURCE_PHOBERT_BASE, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 		self.__phobert_base_model.eval()
 
-		# self.__phobert_large_model = torch.load(RESOURCE_PHOBERT_LARGE, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-		# self.__phobert_large_model.eval()
+		self.__phobert_large_model = torch.load(RESOURCE_PHOBERT_LARGE, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+		self.__phobert_large_model.eval()
 
 		self.__bilstm_model = keras.models.load_model(RESOURCE_PHOBERT_BILSTM)
 
