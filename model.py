@@ -99,7 +99,7 @@ class NERModel(object):
 				length = len(x)
 				if length > SENTENCE_LENGTH:
 					length = SENTENCE_LENGTH
-				x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
+				x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__base_tokenizer.pad_token_id, truncating="post", padding="post")
 				y = self.__bilstm_model.predict(x)
 				label_indices = np.argmax(y[0], axis=-1)
 				label_indices = label_indices[:length]
@@ -109,7 +109,7 @@ class NERModel(object):
 				length = len(x)
 				if length > SENTENCE_LENGTH:
 					length = SENTENCE_LENGTH
-				x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=0.0, truncating="post", padding="post")
+				x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__base_tokenizer.pad_token_id, truncating="post", padding="post")
 				y = self.__bilstm_crf_model.predict(x)
 				label_indices = y[0][0]
 				label_indices = label_indices[:length]
@@ -117,7 +117,7 @@ class NERModel(object):
 				tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
 
 			for token, label_idx in zip(tokens, label_indices):
-				if token == "<s>" or token == "</s>":
+				if token == "<s>" or token == "</s>" or token == "<pad>":
 					continue
 				new_tags.append(self.__tags[label_idx])
 				new_tokens.append(token)
