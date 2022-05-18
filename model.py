@@ -3,7 +3,8 @@ import torch
 import numpy as np
 
 from vncorenlp import VnCoreNLP
-from transformers import AutoTokenizer, BertForQuestionAnswering, BertTokenizer
+from transformers import TFAutoModel, AutoTokenizer, BertForQuestionAnswering, BertTokenizer
+import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras import Model, Input
@@ -22,15 +23,53 @@ def build_bilstm_crf_model(n_labels, n_vocab, input_length, embdding_dim, lstm_u
 							recurrent_dropout=dropout))(word_emb)
 	dense = Dense(n_labels, activation="relu")(bilstm)
 	base = Model(inputs=input, outputs=dense)
-	model = CRFModel(base, n_labels)
+	return CRFModel(base, n_labels)
 
-	return model
+def build_phobert_bilstm_model(n_labels, sentence_length, lstm_units=128, dropout=0.1, is_base_model=True):
+	if is_base_model:
+		phobert = TFAutoModel.from_pretrained("vinai/phobert-base")
+	else:
+		phobert = TFAutoModel.from_pretrained("vinai/phobert-large")
+
+	input = Input(shape=(sentence_length,), dtype=tf.int32)
+	embedding_layer = phobert(input)["last_hidden_state"]
+	dropout_layer = Dropout(dropout)(embedding_layer)
+	bilstm = Bidirectional(LSTM(units=lstm_units, return_sequences=True, recurrent_dropout=dropout))(dropout_layer)
+	out = TimeDistributed(Dense(n_labels, activation="softmax"))(bilstm)
+	return Model(input, out)
+
+def build_phobert_bilstm_crf_model(n_labels, sentence_length, lstm_units=128, dropout=0.1, is_base_model=True):
+	if is_base_model:
+		phobert = TFAutoModel.from_pretrained("vinai/phobert-base")
+	else:
+		phobert = TFAutoModel.from_pretrained("vinai/phobert-large")
+
+	input = Input(shape=(sentence_length,), dtype=tf.int32)
+	embedding_layer = phobert(input)["last_hidden_state"]
+	dropout_layer = Dropout(dropout)(embedding_layer)
+	bilstm = Bidirectional(LSTM(units=lstm_units, return_sequences=True, recurrent_dropout=dropout))(dropout_layer)
+	dense = Dense(n_labels, activation="relu")(bilstm)  # a dense layer as suggested by neuralNer
+	base = Model(inputs=input, outputs=dense)
+	return CRFModel(base, n_labels)
 
 class NERModel(object):
 	def __init__(self) -> None:
 		with open('resources/tags.txt', 'r') as f:
 			self.__tags = [line.rstrip('\n') for line in f]
 
+		self.load_annotator()
+		self.load_tokenizer()
+
+		self.load_phobert_base_model()
+		self.load_phobert_large_model()
+		self.load_bilstm_model()
+		self.load_bilstm_crf_model()
+		self.load_phobert_base_bilstm_model()
+		self.load_phobert_base_bilstm_crf_model()
+		self.load_phobert_large_bilstm_model()
+		# self.load_phobert_large_bilstm_crf_model()
+
+	def load_annotator(self):
 		vncorenlp_svc_host = os.getenv('vncorenlp_svc_host')
 		if not vncorenlp_svc_host:
 			vncorenlp_svc_host = "http://127.0.0.1"
@@ -40,20 +79,41 @@ class NERModel(object):
 			vncorenlp_svc_port = "8000"
 
 		self.__annotator = VnCoreNLP(address=vncorenlp_svc_host, port=int(vncorenlp_svc_port))
+
+	def load_tokenizer(self):
 		self.__base_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base", use_fast=False)
 		self.__large_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-large", use_fast=False)
 
+	def load_phobert_base_model(self):
 		self.__phobert_base_model = torch.load(RESOURCE_PHOBERT_BASE, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 		self.__phobert_base_model.eval()
 
+	def load_phobert_large_model(self):
 		self.__phobert_large_model = torch.load(RESOURCE_PHOBERT_LARGE, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 		self.__phobert_large_model.eval()
 
-		self.__bilstm_model = keras.models.load_model(RESOURCE_PHOBERT_BILSTM)
+	def load_bilstm_model(self):
+		self.__bilstm_model = keras.models.load_model(RESOURCE_BILSTM)
 
+	def load_bilstm_crf_model(self):
 		self.__bilstm_crf_model = build_bilstm_crf_model(len(self.__tags), 64000, SENTENCE_LENGTH, 1024, 128, 0.1)
-		self.__bilstm_crf_model.load_weights(RESOURCE_PHOBERT_BILSTM_CRF)
-		self.__bilstm_crf_model.compile(optimizer="adam", metrics=['acc'])
+		self.__bilstm_crf_model.load_weights(RESOURCE_BILSTM_CRF)
+
+	def load_phobert_base_bilstm_model(self):
+		self.__phobert_base_bilstm_model = build_phobert_bilstm_model(len(self.__tags), SENTENCE_LENGTH, 128, 0.1, is_base_model=True)
+		self.__phobert_base_bilstm_model.load_weights(RESOURCE_PHOBERT_BASE_BILSTM)
+
+	def load_phobert_base_bilstm_crf_model(self):
+		self.__phobert_base_bilstm_crf_model = build_phobert_bilstm_crf_model(len(self.__tags), SENTENCE_LENGTH, 128, 0.1, is_base_model=True)
+		self.__phobert_base_bilstm_crf_model.load_weights(RESOURCE_PHOBERT_BASE_BILSTM_CRF)
+
+	def load_phobert_large_bilstm_model(self):
+		self.__phobert_large_bilstm_model = build_phobert_bilstm_model(len(self.__tags), SENTENCE_LENGTH, 128, 0.1, is_base_model=False)
+		self.__phobert_large_bilstm_model.load_weights(RESOURCE_PHOBERT_LARGE_BILSTM)
+
+	def load_phobert_large_bilstm_crf_model(self):
+		self.__phobert_large_bilstm_crf_model = build_phobert_bilstm_crf_model(len(self.__tags), SENTENCE_LENGTH, 128, 0.1, is_base_model=False)
+		self.__phobert_large_bilstm_crf_model.load_weights(RESOURCE_PHOBERT_LARGE_BILSTM_CRF)
 
 	def __split_array(self, arr, max_len):
 		if len(arr) <= max_len:
@@ -67,6 +127,88 @@ class NERModel(object):
 		results = [arr[:idx].copy()]
 		results.extend(self.__split_array(arr[idx:].copy(), max_len))
 		return results
+
+	def __predict_by_phobert(self, x, is_base_model=True):
+		input_ids = torch.tensor([x])
+		with torch.no_grad():
+			if is_base_model:
+				y = self.__phobert_base_model(input_ids)
+			else:
+				y = self.__phobert_large_model(input_ids)
+
+		label_indices = np.argmax(y[0].to('cpu').numpy(), axis=2)
+		label_indices = label_indices[0]
+		if is_base_model:
+			tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
+		else:
+			tokens = self.__large_tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
+		return tokens, label_indices
+
+	def __predict_by_bilstm(self, x):
+		length = len(x)
+		if length > SENTENCE_LENGTH:
+			length = SENTENCE_LENGTH
+		x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__base_tokenizer.pad_token_id, truncating="post", padding="post")
+		y = self.__bilstm_model.predict(x)
+		label_indices = np.argmax(y[0], axis=-1)
+		label_indices = label_indices[:length]
+		input_ids = x[0][:length]
+		tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
+		return tokens, label_indices
+
+	def __predict_by_bilstm_crf(self, x):
+		length = len(x)
+		if length > SENTENCE_LENGTH:
+			length = SENTENCE_LENGTH
+		x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__base_tokenizer.pad_token_id, truncating="post", padding="post")
+		y = self.__bilstm_crf_model.predict(x)
+		label_indices = y[0][0]
+		label_indices = label_indices[:length]
+		input_ids = x[0][:length]
+		tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
+		return tokens, label_indices
+
+	def __predict_by_phobert_bilstm(self, x, is_base_model=True):
+		length = len(x)
+		if length > SENTENCE_LENGTH:
+			length = SENTENCE_LENGTH
+		
+		if is_base_model:
+			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__base_tokenizer.pad_token_id, truncating="post", padding="post")
+			y = self.__phobert_base_bilstm_model.predict(x)
+		else:
+			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__large_tokenizer.pad_token_id, truncating="post", padding="post")
+			y = self.__phobert_large_bilstm_model.predict(x)
+
+		label_indices = np.argmax(y[0], axis=-1)
+		label_indices = label_indices[:length]
+		input_ids = x[0][:length]
+		if is_base_model:
+			tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
+		else:
+			tokens = self.__large_tokenizer.convert_ids_to_tokens(input_ids)
+		return tokens, label_indices
+
+	def __predict_by_phobert_bilstm_crf(self, x, is_base_model=True):
+		length = len(x)
+		if length > SENTENCE_LENGTH:
+			length = SENTENCE_LENGTH
+
+		if is_base_model:
+			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__base_tokenizer.pad_token_id, truncating="post", padding="post")
+			y = self.__phobert_base_bilstm_crf_model.predict(x)
+		else:
+			x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__large_tokenizer.pad_token_id, truncating="post", padding="post")
+			y = self.__phobert_large_bilstm_crf_model.predict(x)
+
+		label_indices = y[0][0]
+		label_indices = label_indices[:length]
+		input_ids = x[0][:length]
+		if is_base_model:
+			tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
+		else:
+			tokens = self.__large_tokenizer.convert_ids_to_tokens(input_ids)
+		return tokens, label_indices
 
 	def predict_sentence(self, sentence, model_name):
 		segmented_words = self.__annotator.tokenize(sentence)
@@ -82,39 +224,21 @@ class NERModel(object):
 		new_tokens, new_tags = [], []
 		for x in xs:
 			if model_name == MODEL_PHOBERT_BASE:
-				input_ids = torch.tensor([x])
-				with torch.no_grad():
-					y = self.__phobert_base_model(input_ids)
-				label_indices = np.argmax(y[0].to('cpu').numpy(), axis=2)
-				label_indices = label_indices[0]
-				tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
+				tokens, label_indices = self.__predict_by_phobert(x, True)
 			elif model_name == MODEL_PHOBERT_LARGE:
-				input_ids = torch.tensor([x])
-				with torch.no_grad():
-					y = self.__phobert_large_model(input_ids)
-				label_indices = np.argmax(y[0].to('cpu').numpy(), axis=2)
-				label_indices = label_indices[0]
-				tokens = self.__large_tokenizer.convert_ids_to_tokens(input_ids.to('cpu').numpy()[0])
+				tokens, label_indices = self.__predict_by_phobert(x, False)
 			elif model_name == MODEL_BILSTM:
-				length = len(x)
-				if length > SENTENCE_LENGTH:
-					length = SENTENCE_LENGTH
-				x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__base_tokenizer.pad_token_id, truncating="post", padding="post")
-				y = self.__bilstm_model.predict(x)
-				label_indices = np.argmax(y[0], axis=-1)
-				label_indices = label_indices[:length]
-				input_ids = x[0][:length]
-				tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
+				tokens, label_indices = self.__predict_by_bilstm(x)
 			elif model_name == MODEL_BILSTM_CRF:
-				length = len(x)
-				if length > SENTENCE_LENGTH:
-					length = SENTENCE_LENGTH
-				x = pad_sequences([x], maxlen=SENTENCE_LENGTH, dtype="long", value=self.__base_tokenizer.pad_token_id, truncating="post", padding="post")
-				y = self.__bilstm_crf_model.predict(x)
-				label_indices = y[0][0]
-				label_indices = label_indices[:length]
-				input_ids = x[0][:length]
-				tokens = self.__base_tokenizer.convert_ids_to_tokens(input_ids)
+				tokens, label_indices = self.__predict_by_bilstm_crf(x)
+			elif model_name == MODEL_PHOBERT_BASE_BILSTM:
+				tokens, label_indices = self.__predict_by_phobert_bilstm(x, True)
+			elif model_name == MODEL_PHOBERT_BASE_BILSTM_CRF:
+				tokens, label_indices = self.__predict_by_phobert_bilstm_crf(x, True)
+			elif model_name == MODEL_PHOBERT_LARGE_BILSTM:
+				tokens, label_indices = self.__predict_by_phobert_bilstm(x, False)
+			elif model_name == MODEL_PHOBERT_LARGE_BILSTM_CRF:
+				tokens, label_indices = self.__predict_by_phobert_bilstm_crf(x, False)
 
 			for token, label_idx in zip(tokens, label_indices):
 				if token == "<s>" or token == "</s>" or token == "<pad>":
