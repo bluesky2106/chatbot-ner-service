@@ -67,7 +67,7 @@ class NERModel(object):
 		self.load_phobert_base_bilstm_model()
 		self.load_phobert_base_bilstm_crf_model()
 		self.load_phobert_large_bilstm_model()
-		# self.load_phobert_large_bilstm_crf_model()
+		self.load_phobert_large_bilstm_crf_model()
 
 	def load_annotator(self):
 		vncorenlp_svc_host = os.getenv('vncorenlp_svc_host')
