@@ -1,14 +1,14 @@
 import json
 from flask import Flask, request, jsonify
-# from model import NERModel, QuestionAnsweringModel
-from model import NERModel
+from model import NERModel, QuestionAnsweringModel
+# from model import NERModel
 from constants import *
 
 app = Flask(__name__)
 app.config["DEBUG"] = False
 
 ner_model = NERModel()
-# question_answering_model = QuestionAnsweringModel()
+question_answering_model = QuestionAnsweringModel()
 
 valid_models = [
 	MODEL_PHOBERT_BASE,
@@ -44,21 +44,21 @@ def extract_entities():
 
 	return jsonify(response)
 
-# @app.route('/api/v1/question-answering', methods=['POST'])
-# def extract_answer():
-# 	record = json.loads(request.data)
-# 	question = record.get('question')
-# 	passage = record.get('passage')
+@app.route('/api/v1/question-answering', methods=['POST'])
+def extract_answer():
+	record = json.loads(request.data)
+	question = record.get('question')
+	passage = record.get('passage')
 
-# 	if question is None or passage is None:
-# 		return jsonify({'error': 'wrong request body format'})
+	if question is None or passage is None:
+		return jsonify({'error': 'wrong request body format'})
 	
-# 	answer = question_answering_model.question_answer(question, passage)
-# 	response = {
-# 		"question": question,
-# 		"answer": answer
-# 	}
-# 	return jsonify(response)
+	answer = question_answering_model.question_answer(question, passage)
+	response = {
+		"question": question,
+		"answer": answer
+	}
+	return jsonify(response)
 
 if __name__ == '__main__':
   	app.run(host='0.0.0.0', port=8080)

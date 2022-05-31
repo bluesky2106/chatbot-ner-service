@@ -243,7 +243,10 @@ class NERModel(object):
 			for token, label_idx in zip(tokens, label_indices):
 				if token == "<s>" or token == "</s>" or token == "<pad>":
 					continue
-				new_tags.append(self.__tags[label_idx])
+				tag = self.__tags[label_idx]
+				if tag == PADDING_TAG:
+					tag = "O"
+				new_tags.append(tag)
 				new_tokens.append(token)
 
 		new_tokens, new_tags = self.__convert_subwords_to_text(new_tokens, new_tags)
@@ -273,7 +276,9 @@ class NERModel(object):
 						current_token = current_token.replace("@@", "")
 						break
 				else:
+					updated = False
 					current_token = current_token.replace("@@", "")
+					break
 			tks.append(current_token)
 			ts.append(current_tag)
 			if updated:
