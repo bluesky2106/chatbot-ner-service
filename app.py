@@ -49,13 +49,15 @@ def extract_answer():
 	record = json.loads(request.data)
 	question = record.get('question')
 	passage = record.get('passage')
+	language = record.get('language')
 
-	if question is None or passage is None:
+	if question is None or passage is None or language is None:
 		return jsonify({'error': 'wrong request body format'})
+	if language != LANGUAGE_EN and language != LANGUAGE_VI:
+		return jsonify({'error': 'only accept en or vi language'})
 	
-	answer = question_answering_model.question_answer(question, passage)
+	answer = question_answering_model.question_answer(question, passage, language)
 	response = {
-		"question": question,
 		"answer": answer
 	}
 	return jsonify(response)

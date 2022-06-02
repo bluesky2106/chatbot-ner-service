@@ -3,7 +3,7 @@ import torch
 import numpy as np
 
 from vncorenlp import VnCoreNLP
-from transformers import TFAutoModel, AutoTokenizer, BertForQuestionAnswering, BertTokenizer
+from transformers import TFAutoModel, AutoTokenizer, BertForQuestionAnswering, BertTokenizer, BertTokenizerFast
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.preprocessing.sequence import pad_sequences
@@ -350,49 +350,79 @@ class NERModel(object):
 
 class QuestionAnsweringModel(object):
 	def __init__(self) -> None:
-		self.model = BertForQuestionAnswering.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
-		self.tokenizer = BertTokenizer.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
+		self.en_model = BertForQuestionAnswering.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
+		self.en_tokenizer = BertTokenizer.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
 
-	def question_answer(self, question, text):
-		# print("\nQuestion:\n{}".format(question.capitalize()))
-		
-		#tokenize question and text as a pair
-		input_ids = self.tokenizer.encode(question, text)
-		
-		#string version of tokenized ids
-		tokens = self.tokenizer.convert_ids_to_tokens(input_ids)
-		
-		#segment IDs
-		#first occurence of [SEP] token
-		sep_idx = input_ids.index(self.tokenizer.sep_token_id)
-		#number of tokens in segment A (question)
-		num_seg_a = sep_idx+1
-		#number of tokens in segment B (text)
-		num_seg_b = len(input_ids) - num_seg_a
-		
-		#list of 0s and 1s for segment embeddings
-		segment_ids = [0]*num_seg_a + [1]*num_seg_b
-		# assert len(segment_ids) == len(input_ids)
-		
-		#model output using input_ids and segment_ids
-		output = self.model(torch.tensor([input_ids]), token_type_ids=torch.tensor([segment_ids]))
-		
-		#reconstructing the answer
-		answer_start = torch.argmax(output.start_logits)
-		answer_end = torch.argmax(output.end_logits)
-		if answer_end < answer_start:
-			answer = "Unable to find the answer to your question."
-		else:
-			answer = tokens[answer_start]
-			for i in range(answer_start+1, answer_end+1):
-				if tokens[i][0:2] == "##":
-					answer += tokens[i][2:]
-				else:
-					answer += " " + tokens[i]
-					
-		if answer.startswith("[CLS]"):
-			answer = "Unable to find the answer to your question."
-		
-		# print("\nPredicted answer:\n{}".format(answer.capitalize()))
+		self.vi_model = torch.load("resources/multilingual_qa", map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+		self.vi_tokenizer = BertTokenizerFast.from_pretrained('bert-base-multilingual-cased')
+
+	def question_answer(self, question, text, lang=LANGUAGE_EN):
+		if lang == LANGUAGE_EN:
+			#tokenize question and text as a pair
+			input_ids = self.en_tokenizer.encode(question, text)
+			
+			#string version of tokenized ids
+			tokens = self.en_tokenizer.convert_ids_to_tokens(input_ids)
+			
+			#segment IDs
+			#first occurence of [SEP] token
+			sep_idx = input_ids.index(self.en_tokenizer.sep_token_id)
+			#number of tokens in segment A (question)
+			num_seg_a = sep_idx+1
+			#number of tokens in segment B (text)
+			num_seg_b = len(input_ids) - num_seg_a
+			
+			#list of 0s and 1s for segment embeddings
+			segment_ids = [0]*num_seg_a + [1]*num_seg_b
+			# assert len(segment_ids) == len(input_ids)
+			
+			#model output using input_ids and segment_ids
+			output = self.en_model(torch.tensor([input_ids]), token_type_ids=torch.tensor([segment_ids]))
+			
+			#reconstructing the answer
+			answer_start = torch.argmax(output.start_logits)
+			answer_end = torch.argmax(output.end_logits)
+			if answer_end < answer_start:
+				answer = "Unable to find the answer to your question."
+			else:
+				answer = tokens[answer_start]
+				for i in range(answer_start+1, answer_end+1):
+					if tokens[i][0:2] == "##":
+						answer += tokens[i][2:]
+					else:
+						answer += " " + tokens[i]
+						
+			if answer.startswith("[CLS]"):
+				answer = "Unable to find the answer to your question."
+
+		elif lang == LANGUAGE_VI:
+			encodings = self.vi_tokenizer(text, question,
+                    truncation=True, padding='max_length',
+                    max_length=512, return_tensors='pt')
+    
+			input_ids = encodings["input_ids"]
+			token_type_ids = encodings["token_type_ids"]
+			attention_mask = encodings["attention_mask"]
+			
+			tokens = self.vi_tokenizer.convert_ids_to_tokens(input_ids[0])
+			
+			#model output using input_ids and segment_ids
+			output = self.vi_model(input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+			
+			#reconstructing the answer
+			answer_start = torch.argmax(output.start_logits)
+			answer_end = torch.argmax(output.end_logits)
+			if answer_end < answer_start:
+				answer = "Unable to find the answer to your question."
+			else:
+				answer = tokens[answer_start]
+				for i in range(answer_start+1, answer_end+1):
+					if tokens[i][0:2] == "##":
+						answer += tokens[i][2:]
+					else:
+						answer += " " + tokens[i]
+						
+			if answer.startswith("[CLS]"):
+				answer = "Unable to find the answer to your question."
 
 		return answer

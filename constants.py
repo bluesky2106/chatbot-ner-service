@@ -15,3 +15,6 @@ RESOURCE_PHOBERT_BASE_BILSTM = "resources/phobert_base_bilstm/phobert_base_bilst
 RESOURCE_PHOBERT_BASE_BILSTM_CRF = "resources/phobert_base_bilstm_crf/phobert_base_bilstm_crf"
 RESOURCE_PHOBERT_LARGE_BILSTM = "resources/phobert_large_bilstm/phobert_large_bilstm"
 RESOURCE_PHOBERT_LARGE_BILSTM_CRF = "resources/phobert_large_bilstm_crf/phobert_large_bilstm_crf"
+
+LANGUAGE_EN = "en"
+LANGUAGE_VI = "vi"
